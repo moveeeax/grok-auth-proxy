@@ -9,6 +9,12 @@ data:
   GAP_AUTH_FILE: {{ .Values.config.authFile | quote }}
   GAP_AUTH_UPSTREAM_BASE: {{ .Values.config.upstreamBase | quote }}
   GAP_AUTH_REFRESH_SKEW: {{ .Values.config.refreshSkew | quote }}
+  {{- if .Values.config.issuer }}
+  GAP_AUTH_ISSUER: {{ .Values.config.issuer | quote }}
+  {{- end }}
+  {{- if .Values.config.clientId }}
+  GAP_AUTH_CLIENT_ID: {{ .Values.config.clientId | quote }}
+  {{- end }}
   GAP_DB_DRIVER: {{ .Values.config.dbDriver | quote }}
   GAP_DB_DSN: {{ .Values.config.dbDsn | quote }}
   GAP_RATE_LIMIT_RPS: {{ .Values.config.rateLimitRps | quote }}

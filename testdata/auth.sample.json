@@ -4,6 +4,7 @@
     "auth_mode": "oidc",
     "refresh_token": "sample-refresh-token-not-real",
     "expires_at": "2099-01-01T00:00:00.000000Z",
-    "client_id": "sample-client-id"
+    "oidc_client_id": "sample-client-id",
+    "oidc_issuer": "https://auth.x.ai"
   }
 }

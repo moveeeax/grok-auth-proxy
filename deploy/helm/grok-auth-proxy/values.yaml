@@ -2,8 +2,8 @@
 replicaCount: 1
 
 image:
-  repository: grok-auth-proxy
-  tag: local
+  repository: moveeeax/grok-auth-proxy
+  tag: latest
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -21,7 +21,7 @@ service:
 
 ingress:
   enabled: false
-  className: ""
+  className: nginx
   annotations: {}
   hosts:
     - host: grok-proxy.local
@@ -41,9 +41,13 @@ resources:
 # Non-secret configuration (rendered into ConfigMap / env)
 config:
   serverAddr: ":8080"
-  authFile: /config/auth.json
+  # Writable path on the data PVC (seeded from Secret via init container).
+  authFile: /data/auth.json
   upstreamBase: https://api.x.ai/v1
   refreshSkew: 5m
+  # Optional fallbacks if auth.json lacks oidc_client_id / oidc_issuer (Grok CLI fields).
+  issuer: ""
+  clientId: ""
   dbDriver: sqlite
   dbDsn: /data/proxy.db
   rateLimitRps: "10"
@@ -59,13 +63,11 @@ admin:
   # Only for local/dev — prefer existingSecret in production.
   value: ""
 
-# Grok auth.json mount
+# Grok auth.json bootstrap Secret → seeded onto data PVC (writable).
 auth:
-  # Mount from an existing secret containing auth.json
   existingSecret: ""
   secretKey: auth.json
-  # Or use an emptyDir and manage auth.json yourself (not recommended)
-  useEmptyDir: false
+  seedToDataVolume: true
 
 persistence:
   enabled: true
