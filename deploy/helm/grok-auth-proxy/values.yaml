@@ -1,0 +1,83 @@
+# Single-replica by default: SQLite + local auth.json write-back is not multi-writer safe.
+replicaCount: 1
+
+image:
+  repository: grok-auth-proxy
+  tag: local
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: grok-proxy.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Non-secret configuration (rendered into ConfigMap / env)
+config:
+  serverAddr: ":8080"
+  authFile: /config/auth.json
+  upstreamBase: https://api.x.ai/v1
+  refreshSkew: 5m
+  dbDriver: sqlite
+  dbDsn: /data/proxy.db
+  rateLimitRps: "10"
+  rateLimitBurst: "20"
+  logLevel: info
+  logRedact: "true"
+  metricsEnabled: "true"
+
+# Admin key: create a Secret and reference it here.
+admin:
+  existingSecret: ""
+  secretKey: admin-key
+  # Only for local/dev — prefer existingSecret in production.
+  value: ""
+
+# Grok auth.json mount
+auth:
+  # Mount from an existing secret containing auth.json
+  existingSecret: ""
+  secretKey: auth.json
+  # Or use an emptyDir and manage auth.json yourself (not recommended)
+  useEmptyDir: false
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra env vars
+extraEnv: []

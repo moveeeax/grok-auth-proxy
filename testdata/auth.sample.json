@@ -1,0 +1,9 @@
+{
+  "https://auth.x.ai::00000000-0000-0000-0000-000000000001": {
+    "key": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.sample.access.token",
+    "auth_mode": "oidc",
+    "refresh_token": "sample-refresh-token-not-real",
+    "expires_at": "2099-01-01T00:00:00.000000Z",
+    "client_id": "sample-client-id"
+  }
+}

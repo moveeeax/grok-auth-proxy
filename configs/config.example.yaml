@@ -1,0 +1,32 @@
+server:
+  addr: ":8080"
+  admin_key: "change-me-admin-key"
+  shutdown_timeout: 15s
+
+auth:
+  file: "./auth.json"
+  upstream_base: "https://api.x.ai/v1"
+  refresh_skew: 5m
+  # issuer: "https://auth.x.ai"
+  # client_id: ""
+  # account: ""  # optional map key prefix filter
+
+db:
+  driver: "sqlite" # sqlite | postgres
+  dsn: "./data/proxy.db"
+
+rate_limit:
+  rps: 10
+  burst: 20
+
+cors:
+  allowed_origins:
+    - "*"
+
+log:
+  level: "info"
+  redact: true
+
+metrics:
+  enabled: true
+  path: "/metrics"

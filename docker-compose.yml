@@ -1,0 +1,44 @@
+services:
+  grok-auth-proxy:
+    build: .
+    image: grok-auth-proxy:local
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      GAP_SERVER_ADDR: ":8080"
+      GAP_AUTH_FILE: /config/auth.json
+      GAP_DB_DRIVER: sqlite
+      GAP_DB_DSN: /data/proxy.db
+    volumes:
+      # rw: proxy writes refreshed tokens back to auth.json
+      - ${AUTH_JSON_PATH:-./auth.json}:/config/auth.json
+      - proxy-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: proxy
+      POSTGRES_PASSWORD: proxy
+      POSTGRES_DB: proxy
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxy -d proxy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  proxy-data:
+  pg-data:

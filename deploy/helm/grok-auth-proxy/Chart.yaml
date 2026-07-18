@@ -1,0 +1,6 @@
+apiVersion: v2
+name: grok-auth-proxy
+description: OpenAI-compatible proxy for Grok (xAI) with local API keys and auth.json token management
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
