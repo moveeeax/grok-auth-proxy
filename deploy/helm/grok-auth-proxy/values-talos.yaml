@@ -1,0 +1,68 @@
+# Production values for admin@talos-nbg1 / namespace gpt
+replicaCount: 1
+
+image:
+  repository: moveeeax/grok-auth-proxy
+  tag: latest
+  pullPolicy: Always
+
+admin:
+  existingSecret: grok-auth-proxy-admin
+  secretKey: admin-key
+
+auth:
+  existingSecret: grok-auth-proxy-auth
+  secretKey: auth.json
+  seedToDataVolume: true
+
+config:
+  serverAddr: ":8080"
+  authFile: /data/auth.json
+  upstreamBase: https://api.x.ai/v1
+  refreshSkew: 5m
+  dbDriver: sqlite
+  dbDsn: /data/proxy.db
+  rateLimitRps: "20"
+  rateLimitBurst: "40"
+  logLevel: info
+  logRedact: "true"
+  metricsEnabled: "true"
+
+persistence:
+  enabled: true
+  storageClass: longhorn
+  accessModes:
+    - ReadWriteOnce
+  size: 2Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    external-dns.alpha.kubernetes.io/hostname: grok.tarassov.me
+    external-dns.alpha.kubernetes.io/target: "46.225.37.165"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    # SSE / long-lived chat streams
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
+  hosts:
+    - host: grok.tarassov.me
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - grok.tarassov.me
+      secretName: grok-tarassov-me-tls
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

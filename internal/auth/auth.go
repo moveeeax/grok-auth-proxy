@@ -20,13 +20,26 @@ import (
 )
 
 // Entry is a single credential block from auth.json.
+// Grok CLI uses oidc_client_id / oidc_issuer; older/sample files may use client_id / issuer.
 type Entry struct {
 	Key          string    `json:"key"`
 	AuthMode     string    `json:"auth_mode"`
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	ClientID     string    `json:"client_id,omitempty"`
+	OIDCClientID string    `json:"oidc_client_id,omitempty"`
 	Issuer       string    `json:"issuer,omitempty"`
+	OIDCIssuer   string    `json:"oidc_issuer,omitempty"`
+}
+
+// resolvedClientID prefers explicit client_id, then Grok CLI oidc_client_id.
+func (e Entry) resolvedClientID() string {
+	return firstNonEmpty(e.ClientID, e.OIDCClientID)
+}
+
+// resolvedIssuer prefers explicit issuer, then Grok CLI oidc_issuer.
+func (e Entry) resolvedIssuer() string {
+	return firstNonEmpty(e.Issuer, e.OIDCIssuer)
 }
 
 // FileData is the top-level map structure of auth.json.
@@ -303,15 +316,15 @@ func (m *Manager) Refresh(ctx context.Context) error {
 	// Serialize refreshes
 	entry := m.entry
 	mapKey := m.mapKey
-	clientID := firstNonEmpty(entry.ClientID, m.clientID)
-	issuer := firstNonEmpty(entry.Issuer, m.issuer)
+	clientID := firstNonEmpty(entry.resolvedClientID(), m.clientID)
+	issuer := firstNonEmpty(entry.resolvedIssuer(), m.issuer)
 	m.mu.Unlock()
 
 	if strings.TrimSpace(entry.RefreshToken) == "" {
 		return errors.New("no refresh_token available")
 	}
 	if clientID == "" {
-		// Public OIDC clients sometimes omit client_id; try without and surface clear error.
+		// xAI requires client_id; Grok CLI stores it as oidc_client_id.
 		m.log.Debug("refresh without client_id (not set in auth entry or config)")
 	}
 

@@ -48,6 +48,67 @@ func TestParseAndSelectEntry(t *testing.T) {
 	}
 }
 
+func TestGrokCLIAuthFieldsForRefresh(t *testing.T) {
+	var gotClientID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"token_endpoint": "http://" + r.Host + "/oauth/token",
+			})
+		case r.URL.Path == "/oauth/token":
+			_ = r.ParseForm()
+			gotClientID = r.Form.Get("client_id")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "new-access",
+				"refresh_token": "new-refresh",
+				"expires_in":    3600,
+				"token_type":    "Bearer",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "auth.json")
+	// Real Grok CLI shape: oidc_client_id / oidc_issuer, no client_id / issuer.
+	raw := []byte(`{
+		"https://auth.x.ai::test": {
+			"key": "old-access",
+			"auth_mode": "oidc",
+			"refresh_token": "old-refresh",
+			"expires_at": "` + time.Now().Add(30*time.Second).UTC().Format(time.RFC3339Nano) + `",
+			"oidc_client_id": "grok-cli-client",
+			"oidc_issuer": "` + srv.URL + `"
+		}
+	}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := NewManager(Options{
+		Path:        path,
+		RefreshSkew: 5 * time.Minute,
+		HTTPClient:  srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tok, err := m.GetAccessToken(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok != "new-access" {
+		t.Fatalf("got %q", tok)
+	}
+	if gotClientID != "grok-cli-client" {
+		t.Fatalf("client_id sent to token endpoint = %q, want grok-cli-client", gotClientID)
+	}
+}
+
 func TestGetAccessTokenNoRefreshWhenFresh(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")

@@ -6,6 +6,8 @@ metadata:
     {{- include "grok-auth-proxy.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "grok-auth-proxy.selectorLabels" . | nindent 6 }}
@@ -13,6 +15,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.auth.existingSecret }}
+        checksum/auth: {{ .Values.auth.existingSecret | quote }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -25,9 +30,40 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
         fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+      {{- if and .Values.auth.existingSecret .Values.auth.seedToDataVolume }}
+      initContainers:
+        - name: seed-auth
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              DEST="{{ .Values.config.authFile }}"
+              SRC="/bootstrap/auth.json"
+              mkdir -p "$(dirname "$DEST")"
+              # Seed only if missing so token refresh write-back is preserved across restarts.
+              if [ ! -s "$DEST" ]; then
+                echo "seeding $DEST from secret"
+                cp "$SRC" "$DEST"
+                chmod 600 "$DEST"
+              else
+                echo "keeping existing $DEST"
+              fi
+              chown -R 65532:65532 /data || true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: auth-bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+      {{- end }}
       containers:
         - name: grok-auth-proxy
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -49,11 +85,10 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
-            - name: auth
-              mountPath: /config
-              readOnly: false
             - name: data
               mountPath: /data
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /health
@@ -69,21 +104,14 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
       volumes:
-        - name: auth
-          {{- if .Values.auth.existingSecret }}
-          secret:
-            secretName: {{ .Values.auth.existingSecret }}
-            items:
-              - key: {{ .Values.auth.secretKey }}
-                path: auth.json
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
         - name: data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
@@ -91,6 +119,16 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.auth.existingSecret .Values.auth.seedToDataVolume }}
+        - name: auth-bootstrap
+          secret:
+            secretName: {{ .Values.auth.existingSecret }}
+            items:
+              - key: {{ .Values.auth.secretKey }}
+                path: auth.json
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
