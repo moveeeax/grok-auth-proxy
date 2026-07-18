@@ -1,0 +1,28 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+/grok-auth-proxy
+
+# Dependencies
+/vendor/
+
+# Data & secrets
+/data/
+*.db
+*.db-journal
+auth.json
+.env
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Coverage
+coverage.out
+coverage.html

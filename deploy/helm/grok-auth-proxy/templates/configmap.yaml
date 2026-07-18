@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grok-auth-proxy.fullname" . }}
+  labels:
+    {{- include "grok-auth-proxy.labels" . | nindent 4 }}
+data:
+  GAP_SERVER_ADDR: {{ .Values.config.serverAddr | quote }}
+  GAP_AUTH_FILE: {{ .Values.config.authFile | quote }}
+  GAP_AUTH_UPSTREAM_BASE: {{ .Values.config.upstreamBase | quote }}
+  GAP_AUTH_REFRESH_SKEW: {{ .Values.config.refreshSkew | quote }}
+  GAP_DB_DRIVER: {{ .Values.config.dbDriver | quote }}
+  GAP_DB_DSN: {{ .Values.config.dbDsn | quote }}
+  GAP_RATE_LIMIT_RPS: {{ .Values.config.rateLimitRps | quote }}
+  GAP_RATE_LIMIT_BURST: {{ .Values.config.rateLimitBurst | quote }}
+  GAP_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  GAP_LOG_REDACT: {{ .Values.config.logRedact | quote }}
+  GAP_METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}
