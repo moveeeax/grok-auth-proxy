@@ -1,4 +1,8 @@
 # Single-replica by default: SQLite + local auth.json write-back is not multi-writer safe.
+#
+# For real clusters, copy values.production.example.yaml to a private file outside
+# the repo (or values-private.yaml, which is gitignored). Never commit real
+# hostnames, public IPs, or cluster-specific names.
 replicaCount: 1
 
 image:

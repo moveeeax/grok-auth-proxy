@@ -5,7 +5,7 @@ OpenAI-compatible HTTP API exposed by **grok-auth-proxy**. Clients authenticate 
 | Item | Value |
 |------|--------|
 | Default listen address | `http://localhost:8080` |
-| Production example | `https://grok.tarassov.me` |
+| Production example | `https://grok-proxy.example.com` (your ingress host) |
 | OpenAI-compatible base URL (for SDKs / Roo Code / Cline) | `{origin}/v1` |
 | Upstream (default) | `https://api.x.ai/v1` |
 
@@ -431,10 +431,10 @@ curl -sS -X POST http://localhost:8080/admin/keys \
 
 ```json
 {
-  "id": "7acdf2b2641afc69019f6c694016f4c4",
+  "id": "a1b2c3d4e5f6789012345678abcdef01",
   "name": "roocode",
-  "key_prefix": "sk-gap-fe56954c3…",
-  "key": "sk-gap-fe56954c3…full-secret-only-here…",
+  "key_prefix": "sk-gap-0123456789ab…",
+  "key": "sk-gap-0123456789ab…full-secret-only-here…",
   "rate_limit_rps": 20,
   "created_at": "2026-07-19T03:49:54Z",
   "enabled": true
@@ -464,9 +464,9 @@ curl -sS http://localhost:8080/admin/keys \
 {
   "keys": [
     {
-      "id": "7acdf2b2641afc69019f6c694016f4c4",
+      "id": "a1b2c3d4e5f6789012345678abcdef01",
       "name": "roocode",
-      "key_prefix": "sk-gap-fe56954c3…",
+      "key_prefix": "sk-gap-0123456789ab…",
       "rate_limit_rps": 20,
       "enabled": true,
       "created_at": "2026-07-19T03:49:54Z",
@@ -482,14 +482,14 @@ curl -sS http://localhost:8080/admin/keys \
 Soft-revoke: sets `enabled=false` and `revoked_at`.
 
 ```bash
-curl -sS -X DELETE "http://localhost:8080/admin/keys/7acdf2b2641afc69019f6c694016f4c4" \
+curl -sS -X DELETE "http://localhost:8080/admin/keys/a1b2c3d4e5f6789012345678abcdef01" \
   -H "Authorization: Bearer $ADMIN_KEY" | jq .
 ```
 
 **200**
 
 ```json
-{ "status": "revoked", "id": "7acdf2b2641afc69019f6c694016f4c4" }
+{ "status": "revoked", "id": "a1b2c3d4e5f6789012345678abcdef01" }
 ```
 
 **404** if id unknown or already revoked with no matching row:
@@ -548,7 +548,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="sk-gap-…",
-    base_url="https://grok.tarassov.me/v1",
+    base_url="https://grok-proxy.example.com/v1",
 )
 
 r = client.chat.completions.create(
@@ -561,7 +561,7 @@ print(r.choices[0].message.content)
 ### curl checklist (production)
 
 ```bash
-BASE=https://grok.tarassov.me
+BASE=https://grok-proxy.example.com
 export GAP_API_KEY='sk-gap-…'
 
 # Health (no key)

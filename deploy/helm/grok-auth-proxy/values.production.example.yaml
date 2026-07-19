@@ -1,8 +1,13 @@
-# Production values for admin@talos-nbg1 / namespace gpt
+# Example production overrides. Copy to a private path (not committed), e.g.:
+#   cp values.production.example.yaml ~/secrets/grok-auth-proxy-values.yaml
+#   helm upgrade --install grok-auth-proxy . -n <ns> -f ~/secrets/grok-auth-proxy-values.yaml
+#
+# Do not put real hostnames, IPs, or cluster-specific names in this repository.
+
 replicaCount: 1
 
 image:
-  repository: moveeeax/grok-auth-proxy
+  repository: example.com/grok-auth-proxy
   tag: latest
   pullPolicy: Always
 
@@ -30,7 +35,7 @@ config:
 
 persistence:
   enabled: true
-  storageClass: longhorn
+  storageClass: "" # e.g. your cluster StorageClass
   accessModes:
     - ReadWriteOnce
   size: 2Gi
@@ -39,25 +44,23 @@ ingress:
   enabled: true
   className: nginx
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    external-dns.alpha.kubernetes.io/hostname: grok.tarassov.me
-    external-dns.alpha.kubernetes.io/target: "46.225.37.165"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/backend-protocol: HTTP
     # SSE / long-lived chat streams
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-body-size: "32m"
   hosts:
-    - host: grok.tarassov.me
+    - host: grok-proxy.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - hosts:
-        - grok.tarassov.me
-      secretName: grok-tarassov-me-tls
+        - grok-proxy.example.com
+      secretName: grok-proxy-tls
 
 resources:
   requests:
