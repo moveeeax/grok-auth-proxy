@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+  # GHA cache for buildx on public runners
+  actions: write
 
 env:
   IMAGE: ${{ vars.DOCKERHUB_IMAGE || 'moveeeax/grok-auth-proxy' }}
