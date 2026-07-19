@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -23,6 +25,19 @@ const (
 	prefixDisplay  = 12 // characters of random part shown in prefix
 	bcryptCost     = 12
 	randomKeyBytes = 32
+
+	// Bound DB usage so load cannot exhaust Postgres max_connections.
+	defaultMaxOpenConns = 25
+	defaultMaxIdleConns = 10
+	defaultConnMaxLife  = 30 * time.Minute
+	defaultConnMaxIdle  = 5 * time.Minute
+
+	// Positive cache for validated keys: avoids bcrypt+SELECT on every request.
+	keyCacheTTL = 30 * time.Second
+	// Throttle last_used_at writes so hot keys do not UPDATE on every RPS spike.
+	lastUsedMinInterval = 60 * time.Second
+	// Keep probes snappy even if the pool is busy.
+	pingTimeout = 500 * time.Millisecond
 )
 
 // APIKey is the persisted API key record. The plaintext key is never stored.
@@ -92,9 +107,18 @@ type CreateKeyResult struct {
 	Plaintext string `json:"plaintext"`
 }
 
+type keyCacheEntry struct {
+	key       APIKey
+	expiresAt time.Time
+	lastUsed  time.Time // last time we flushed last_used_at to DB
+}
+
 // Store abstracts API key persistence.
 type Store struct {
 	db *gorm.DB
+
+	cacheMu sync.RWMutex
+	cache   map[string]*keyCacheEntry // lookup hash → entry
 }
 
 // Open opens a SQLite or PostgreSQL database and runs migrations.
@@ -108,6 +132,7 @@ func Open(driver, dsn string) (*Store, error) {
 			}
 		}
 		// Pure Go SQLite (modernc) — works with CGO_ENABLED=0.
+		// Limit concurrency; sqlite dislikes many writers.
 		dialector = sqlite.Open(dsn)
 	case "postgres":
 		dialector = postgres.Open(dsn)
@@ -121,10 +146,30 @@ func Open(driver, dsn string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("sql db: %w", err)
+	}
+	maxOpen := defaultMaxOpenConns
+	maxIdle := defaultMaxIdleConns
+	if strings.EqualFold(driver, "sqlite") {
+		// Single-writer friendly defaults for local/dev.
+		maxOpen = 4
+		maxIdle = 2
+	}
+	sqlDB.SetMaxOpenConns(maxOpen)
+	sqlDB.SetMaxIdleConns(maxIdle)
+	sqlDB.SetConnMaxLifetime(defaultConnMaxLife)
+	sqlDB.SetConnMaxIdleTime(defaultConnMaxIdle)
+
 	if err := db.AutoMigrate(&APIKey{}, &AuthState{}, &AuditLog{}); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	return &Store{db: db}, nil
+	return &Store{
+		db:    db,
+		cache: make(map[string]*keyCacheEntry),
+	}, nil
 }
 
 // Close closes the underlying DB.
@@ -136,13 +181,16 @@ func (s *Store) Close() error {
 	return sqlDB.Close()
 }
 
-// Ping checks database connectivity.
+// Ping checks database connectivity with a short timeout so readiness
+// probes do not hang when the pool is saturated.
 func (s *Store) Ping() error {
 	sqlDB, err := s.db.DB()
 	if err != nil {
 		return err
 	}
-	return sqlDB.Ping()
+	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+	defer cancel()
+	return sqlDB.PingContext(ctx)
 }
 
 // CreateKey generates a new API key.
@@ -197,17 +245,30 @@ func (s *Store) RevokeKey(id string) error {
 	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
+	s.invalidateCacheByID(id)
 	return nil
 }
 
 // ValidatePlaintext checks a bearer token against the store.
-// Returns the key record if valid.
+// Uses a short positive cache and async/throttled last_used_at updates so
+// hot paths do not stampede Postgres under load.
 func (s *Store) ValidatePlaintext(plaintext string) (*APIKey, error) {
 	if plaintext == "" {
 		return nil, ErrUnauthorized
 	}
+	lh := lookupHash(plaintext)
+	now := time.Now().UTC()
+
+	if ent := s.cacheGet(lh); ent != nil {
+		rec := ent.key
+		s.touchLastUsed(lh, rec.ID, now)
+		out := rec
+		out.LastUsedAt = &now
+		return &out, nil
+	}
+
 	var rec APIKey
-	err := s.db.Where("key_lookup = ? AND enabled = ? AND revoked_at IS NULL", lookupHash(plaintext), true).
+	err := s.db.Where("key_lookup = ? AND enabled = ? AND revoked_at IS NULL", lh, true).
 		First(&rec).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrUnauthorized
@@ -218,10 +279,71 @@ func (s *Store) ValidatePlaintext(plaintext string) (*APIKey, error) {
 	if err := bcrypt.CompareHashAndPassword([]byte(rec.KeyHash), []byte(plaintext)); err != nil {
 		return nil, ErrUnauthorized
 	}
-	now := time.Now().UTC()
-	_ = s.db.Model(&APIKey{}).Where("id = ?", rec.ID).Update("last_used_at", now).Error
-	rec.LastUsedAt = &now
-	return &rec, nil
+
+	s.cachePut(lh, rec, now)
+	s.touchLastUsed(lh, rec.ID, now)
+	out := rec
+	out.LastUsedAt = &now
+	return &out, nil
+}
+
+func (s *Store) cacheGet(lookup string) *keyCacheEntry {
+	s.cacheMu.RLock()
+	ent, ok := s.cache[lookup]
+	s.cacheMu.RUnlock()
+	if !ok || ent == nil {
+		return nil
+	}
+	if time.Now().UTC().After(ent.expiresAt) {
+		s.cacheMu.Lock()
+		delete(s.cache, lookup)
+		s.cacheMu.Unlock()
+		return nil
+	}
+	return ent
+}
+
+func (s *Store) cachePut(lookup string, rec APIKey, now time.Time) {
+	// Do not keep bcrypt hash in long-lived structs beyond need; still needed for
+	// cache-only path? We skip bcrypt on cache hit, so hash is unused after put.
+	s.cacheMu.Lock()
+	s.cache[lookup] = &keyCacheEntry{
+		key:       rec,
+		expiresAt: now.Add(keyCacheTTL),
+		lastUsed:  time.Time{}, // force one async write soon
+	}
+	s.cacheMu.Unlock()
+}
+
+func (s *Store) invalidateCacheByID(id string) {
+	s.cacheMu.Lock()
+	for k, ent := range s.cache {
+		if ent != nil && ent.key.ID == id {
+			delete(s.cache, k)
+		}
+	}
+	s.cacheMu.Unlock()
+}
+
+// touchLastUsed schedules a throttled async UPDATE so request path never waits on it.
+func (s *Store) touchLastUsed(lookup, id string, now time.Time) {
+	s.cacheMu.Lock()
+	ent := s.cache[lookup]
+	if ent == nil {
+		s.cacheMu.Unlock()
+		return
+	}
+	if !ent.lastUsed.IsZero() && now.Sub(ent.lastUsed) < lastUsedMinInterval {
+		s.cacheMu.Unlock()
+		return
+	}
+	ent.lastUsed = now
+	s.cacheMu.Unlock()
+
+	go func() {
+		// Best-effort; ignore errors (table may be down under extreme load).
+		_ = s.db.Model(&APIKey{}).Where("id = ?", id).Update("last_used_at", now).Error
+	}()
 }
 
 // ErrNotFound is returned when a key id does not exist.

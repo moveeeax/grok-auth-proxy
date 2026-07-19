@@ -32,6 +32,15 @@ func TestCreateValidateRevoke(t *testing.T) {
 		t.Fatalf("id mismatch")
 	}
 
+	// Cache hit path (no second DB round-trip required for success).
+	got2, err := s.ValidatePlaintext(res.Plaintext)
+	if err != nil {
+		t.Fatalf("validate cached: %v", err)
+	}
+	if got2.ID != res.Key.ID {
+		t.Fatalf("cached id mismatch")
+	}
+
 	if _, err := s.ValidatePlaintext("sk-gap-invalid"); err != ErrUnauthorized {
 		t.Fatalf("expected unauthorized, got %v", err)
 	}
