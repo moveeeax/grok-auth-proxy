@@ -114,16 +114,24 @@ Example file: [`configs/config.example.yaml`](configs/config.example.yaml).
 
 ## HTTP API
 
+**Full reference with request/response examples:** [docs/API.md](docs/API.md).
+
 ### Public / OpenAI-compatible
+
+Client auth: `Authorization: Bearer sk-gap-…` (create via admin).
 
 | Method | Path | Auth |
 |--------|------|------|
 | `POST` | `/v1/chat/completions` | API key |
 | `GET` | `/v1/models` | API key |
-| `*` | `/v1/*` | API key (passthrough) |
+| `POST` | `/v1/completions` | API key |
+| `POST` | `/v1/embeddings` | API key |
+| `POST` | `/v1/responses` | API key |
 | `GET` | `/health` | none |
 | `GET` | `/ready` | none |
 | `GET` | `/metrics` | none |
+
+Bodies for `/v1/*` are OpenAI-compatible and proxied to xAI. For IDE clients (Roo Code, etc.) set base URL to `https://<host>/v1` and a model id from `GET /v1/models`.
 
 ### Admin
 
@@ -131,10 +139,10 @@ Auth: `Authorization: Bearer <admin_key>` or `X-Admin-Key: <admin_key>`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/admin/keys` | Create key (`{"name","rate_limit_rps"}`) |
+| `POST` | `/admin/keys` | Create key (`{"name","rate_limit_rps"}`); plaintext `key` only once |
 | `GET` | `/admin/keys` | List keys (no secrets) |
 | `DELETE` | `/admin/keys/:id` | Revoke key |
-| `POST` | `/admin/reload-auth` | Reload `auth.json` |
+| `POST` | `/admin/reload-auth` | Reload `auth.json` from disk |
 
 ## Security notes
 
@@ -164,6 +172,7 @@ internal/
   server/            # gin wiring
   store/             # API keys (GORM)
 configs/             # example config
+docs/                # API reference
 testdata/            # sample auth.json
 ```
 
