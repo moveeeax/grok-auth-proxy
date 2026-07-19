@@ -17,6 +17,13 @@ auth.json
 .env
 !.env.example
 
+# Private / environment-specific Helm values (never commit real hosts, IPs, cluster names)
+deploy/helm/**/values-private.yaml
+deploy/helm/**/values-talos.yaml
+deploy/helm/**/values-prod.yaml
+deploy/helm/**/values.*.local.yaml
+**/values-private*.yaml
+
 # IDE / OS
 .idea/
 .vscode/
