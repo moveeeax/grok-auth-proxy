@@ -2,6 +2,12 @@ server:
   addr: ":8080"
   admin_key: "change-me-admin-key"
   shutdown_timeout: 15s
+  # Bound how long a client may take to send a request and how long an idle
+  # keep-alive connection is held; without these a slow client can pin sockets.
+  read_timeout: 60s
+  idle_timeout: 120s
+  # Largest proxied client request body. Bigger requests get 413.
+  max_request_bytes: 10485760
 
 auth:
   file: "./auth.json"
@@ -33,6 +39,8 @@ log:
 # Proxied request/response bodies stored in DB (admin /admin/audit).
 audit:
   enabled: true
+  # Caps only what is stored per side. It does NOT truncate the request that is
+  # forwarded upstream — see server.max_request_bytes for that.
   max_body_bytes: 65536
 
 metrics:

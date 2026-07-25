@@ -10,17 +10,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// unmatchedRoute is the single label value used for requests that did not match
+// a registered route, keeping metric cardinality bounded.
+const unmatchedRoute = "unmatched"
+
 // Metrics holds Prometheus collectors.
 type Metrics struct {
 	Requests *prometheus.CounterVec
 	Latency  *prometheus.HistogramVec
 
 	// Auth / Grok session
-	AuthTokenExpiresAt       prometheus.Gauge
+	AuthTokenExpiresAt        prometheus.Gauge
 	AuthTokenSecondsRemaining prometheus.Gauge
-	AuthTokenHasRefresh      prometheus.Gauge
-	AuthReady                prometheus.Gauge
-	AuthRefreshTotal         *prometheus.CounterVec
+	AuthTokenHasRefresh       prometheus.Gauge
+	AuthReady                 prometheus.Gauge
+	AuthRefreshTotal          *prometheus.CounterVec
 }
 
 // New registers default metrics.
@@ -94,9 +98,13 @@ func (m *Metrics) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
+		// c.FullPath() is the registered route template, which is a bounded
+		// set. Falling back to the raw URL path would let any caller mint an
+		// unbounded number of label values (one series per 404'd URL) and
+		// exhaust the process memory, so unmatched requests share one bucket.
 		path := c.FullPath()
 		if path == "" {
-			path = c.Request.URL.Path
+			path = unmatchedRoute
 		}
 		status := strconv.Itoa(c.Writer.Status())
 		m.Requests.WithLabelValues(c.Request.Method, path, status).Inc()

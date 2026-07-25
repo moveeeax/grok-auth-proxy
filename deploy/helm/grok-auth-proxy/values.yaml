@@ -49,6 +49,11 @@ resources:
 # Non-secret configuration (rendered into ConfigMap / env)
 config:
   serverAddr: ":8080"
+  # Request read / idle connection timeouts (slowloris guards).
+  serverReadTimeout: 60s
+  serverIdleTimeout: 120s
+  # Largest proxied client request body; bigger requests get 413.
+  serverMaxRequestBytes: "10485760"
   # When seedToDataVolume=false, mount auth secret here (read-only).
   authFile: /config/auth.json
   upstreamBase: https://api.x.ai/v1
@@ -66,6 +71,7 @@ config:
   logRedact: "true"
   metricsEnabled: "true"
   auditEnabled: "true"
+  # Caps only what is stored in the audit log, not what is proxied.
   auditMaxBodyBytes: "65536"
 
 # External Postgres DSN (recommended). Key should contain the full libpq/GORM DSN.

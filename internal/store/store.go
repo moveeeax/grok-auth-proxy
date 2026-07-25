@@ -41,8 +41,8 @@ const (
 	// Soft readiness: tolerate brief pool pressure after a recent successful ping.
 	dbOKGrace = 45 * time.Second
 
-	auditQueueSize   = 4096
-	auditWorkers     = 2
+	auditQueueSize = 4096
+	auditWorkers   = 2
 )
 
 // APIKey is the persisted API key record. The plaintext key is never stored.
@@ -71,26 +71,26 @@ const AuthStateDefaultID = "default"
 
 // AuditLog is one proxied client request for admin audit.
 type AuditLog struct {
-	ID               string    `gorm:"primaryKey;size:36" json:"id"`
-	CreatedAt        time.Time `gorm:"index" json:"created_at"`
-	RequestID        string    `gorm:"size:64;index" json:"request_id"`
-	APIKeyID         string    `gorm:"size:36;index" json:"api_key_id,omitempty"`
-	APIKeyName       string    `gorm:"size:128" json:"api_key_name,omitempty"`
-	APIKeyPrefix     string    `gorm:"size:32" json:"api_key_prefix,omitempty"`
-	Method           string    `gorm:"size:16" json:"method"`
-	Path             string    `gorm:"size:512;index" json:"path"`
-	Query            string    `gorm:"size:1024" json:"query,omitempty"`
-	ClientIP         string    `gorm:"size:64" json:"client_ip,omitempty"`
-	UserAgent        string    `gorm:"size:512" json:"user_agent,omitempty"`
-	StatusCode       int       `gorm:"index" json:"status_code"`
-	LatencyMS        int64     `json:"latency_ms"`
-	Model            string    `gorm:"size:128;index" json:"model,omitempty"`
-	Stream           bool      `json:"stream"`
-	RequestBody      string    `gorm:"type:text" json:"request_body,omitempty"`
-	ResponseBody     string    `gorm:"type:text" json:"response_body,omitempty"`
-	RequestTruncated bool      `json:"request_truncated"`
-	ResponseTruncated bool     `json:"response_truncated"`
-	Error            string    `gorm:"size:1024" json:"error,omitempty"`
+	ID                string    `gorm:"primaryKey;size:36" json:"id"`
+	CreatedAt         time.Time `gorm:"index" json:"created_at"`
+	RequestID         string    `gorm:"size:64;index" json:"request_id"`
+	APIKeyID          string    `gorm:"size:36;index" json:"api_key_id,omitempty"`
+	APIKeyName        string    `gorm:"size:128" json:"api_key_name,omitempty"`
+	APIKeyPrefix      string    `gorm:"size:32" json:"api_key_prefix,omitempty"`
+	Method            string    `gorm:"size:16" json:"method"`
+	Path              string    `gorm:"size:512;index" json:"path"`
+	Query             string    `gorm:"size:1024" json:"query,omitempty"`
+	ClientIP          string    `gorm:"size:64" json:"client_ip,omitempty"`
+	UserAgent         string    `gorm:"size:512" json:"user_agent,omitempty"`
+	StatusCode        int       `gorm:"index" json:"status_code"`
+	LatencyMS         int64     `json:"latency_ms"`
+	Model             string    `gorm:"size:128;index" json:"model,omitempty"`
+	Stream            bool      `json:"stream"`
+	RequestBody       string    `gorm:"type:text" json:"request_body,omitempty"`
+	ResponseBody      string    `gorm:"type:text" json:"response_body,omitempty"`
+	RequestTruncated  bool      `json:"request_truncated"`
+	ResponseTruncated bool      `json:"response_truncated"`
+	Error             string    `gorm:"size:1024" json:"error,omitempty"`
 }
 
 // AuditListFilter filters audit log queries.
