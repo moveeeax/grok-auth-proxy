@@ -113,6 +113,7 @@ Upstream (xAI) errors are forwarded as-is (status code and body), for example:
 | `400` | Bad client JSON (admin) or upstream validation (e.g. unknown model) |
 | `401` | Missing/invalid API key or admin key |
 | `404` | Unknown path (e.g. `/v1/v1/chat/completions`) or unknown key id |
+| `413` | Request body larger than `GAP_SERVER_MAX_REQUEST_BYTES` (default 10 MiB) |
 | `429` | Per-key rate limit exceeded |
 | `500` | Internal (DB, reload failure, …) |
 | `502` | Upstream request failed / unauthorized after refresh |
@@ -577,7 +578,12 @@ curl -sS "http://localhost:8080/admin/audit?limit=20&path=/v1/chat/completions" 
 }
 ```
 
-Bodies are truncated at `GAP_AUDIT_MAX_BODY_BYTES` (default 64 KiB) per side. Streaming responses store the first N bytes only.
+Stored bodies are truncated at `GAP_AUDIT_MAX_BODY_BYTES` (default 64 KiB) per side, and the
+`request_truncated` / `response_truncated` flags say so. This limit applies only to what is
+persisted — the request forwarded to xAI is never truncated. The proxied request body is
+bounded separately by `GAP_SERVER_MAX_REQUEST_BYTES` (default 10 MiB); larger requests are
+rejected with `413 Request Entity Too Large` and never reach the upstream. Streaming responses
+store the first N bytes only.
 
 Disable with `GAP_AUDIT_ENABLED=false`.
 

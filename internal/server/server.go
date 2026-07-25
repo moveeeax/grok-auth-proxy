@@ -60,12 +60,13 @@ func New(deps Dependencies) (*Server, error) {
 	}
 
 	up, err := proxy.NewWithOptions(proxy.Options{
-		BaseURL:      deps.Config.Auth.UpstreamBase,
-		Tokens:       deps.Auth,
-		Log:          deps.Log,
-		Auditor:      deps.Store,
-		AuditEnabled: deps.Config.Audit.Enabled,
-		MaxBodyBytes: deps.Config.Audit.MaxBodyBytes,
+		BaseURL:         deps.Config.Auth.UpstreamBase,
+		Tokens:          deps.Auth,
+		Log:             deps.Log,
+		Auditor:         deps.Store,
+		AuditEnabled:    deps.Config.Audit.Enabled,
+		MaxBodyBytes:    deps.Config.Audit.MaxBodyBytes,
+		MaxRequestBytes: deps.Config.Server.MaxRequestBytes,
 	})
 	if err != nil {
 		return nil, err
@@ -101,11 +102,26 @@ func New(deps Dependencies) (*Server, error) {
 		ad.GET("/audit/:id", adminH.GetAudit)
 	}
 
+	readTimeout := deps.Config.Server.ReadTimeout
+	if readTimeout <= 0 {
+		readTimeout = 60 * time.Second
+	}
+	idleTimeout := deps.Config.Server.IdleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = 120 * time.Second
+	}
 	srv := &http.Server{
 		Addr:              deps.Config.Server.Addr,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
-		// WriteTimeout left zero for long-lived SSE streams
+		// Without ReadTimeout a client can dribble out a request body forever
+		// and hold the connection open; without IdleTimeout an idle keep-alive
+		// connection is never reclaimed. Either one is a trivial slowloris.
+		ReadTimeout:    readTimeout,
+		IdleTimeout:    idleTimeout,
+		MaxHeaderBytes: 1 << 20,
+		// WriteTimeout left zero on purpose: SSE responses stream for minutes
+		// and a write deadline would cut them off mid-stream.
 	}
 
 	return &Server{

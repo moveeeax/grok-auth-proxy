@@ -98,6 +98,9 @@ Priority: **flags → env (`GAP_*`) → config file → defaults**.
 |----------|---------|-------------|
 | `GAP_SERVER_ADDR` | `:8080` | Listen address |
 | `GAP_SERVER_ADMIN_KEY` | **required** | Admin API secret |
+| `GAP_SERVER_READ_TIMEOUT` | `60s` | Max time to read a client request (slowloris guard) |
+| `GAP_SERVER_IDLE_TIMEOUT` | `120s` | Max idle keep-alive connection lifetime |
+| `GAP_SERVER_MAX_REQUEST_BYTES` | `10485760` | Largest proxied request body; larger gets `413` |
 | `GAP_AUTH_FILE` | `./auth.json` | Path to Grok `auth.json` |
 | `GAP_AUTH_UPSTREAM_BASE` | `https://api.x.ai/v1` | Upstream API base |
 | `GAP_AUTH_REFRESH_SKEW` | `5m` | Refresh before expiry |
@@ -110,7 +113,7 @@ Priority: **flags → env (`GAP_*`) → config file → defaults**.
 | `GAP_LOG_LEVEL` | `info` | `debug\|info\|warn\|error` |
 | `GAP_LOG_REDACT` | `true` | Redact secrets in logs |
 | `GAP_AUDIT_ENABLED` | `true` | Store request/response bodies in DB |
-| `GAP_AUDIT_MAX_BODY_BYTES` | `65536` | Max body size stored per side |
+| `GAP_AUDIT_MAX_BODY_BYTES` | `65536` | Max body size **stored** per side (does not truncate what is proxied) |
 | `GAP_METRICS_ENABLED` | `true` | Prometheus metrics |
 | `GAP_CONFIG` | | Optional config file path |
 

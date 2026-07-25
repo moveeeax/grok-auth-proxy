@@ -6,6 +6,9 @@ metadata:
     {{- include "grok-auth-proxy.labels" . | nindent 4 }}
 data:
   GAP_SERVER_ADDR: {{ .Values.config.serverAddr | quote }}
+  GAP_SERVER_READ_TIMEOUT: {{ .Values.config.serverReadTimeout | default "60s" | quote }}
+  GAP_SERVER_IDLE_TIMEOUT: {{ .Values.config.serverIdleTimeout | default "120s" | quote }}
+  GAP_SERVER_MAX_REQUEST_BYTES: {{ .Values.config.serverMaxRequestBytes | default "10485760" | quote }}
   GAP_AUTH_FILE: {{ .Values.config.authFile | quote }}
   GAP_AUTH_UPSTREAM_BASE: {{ .Values.config.upstreamBase | quote }}
   GAP_AUTH_REFRESH_SKEW: {{ .Values.config.refreshSkew | quote }}

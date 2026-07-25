@@ -95,12 +95,12 @@ func TestAuthStateAndAudit(t *testing.T) {
 	}
 
 	row := &AuditLog{
-		RequestID:  "req-1",
-		Method:     "POST",
-		Path:       "/v1/chat/completions",
-		StatusCode: 200,
-		Model:      "grok-4.5",
-		RequestBody: `{"model":"grok-4.5"}`,
+		RequestID:    "req-1",
+		Method:       "POST",
+		Path:         "/v1/chat/completions",
+		StatusCode:   200,
+		Model:        "grok-4.5",
+		RequestBody:  `{"model":"grok-4.5"}`,
 		ResponseBody: `{"ok":true}`,
 	}
 	if err := s.InsertAuditLog(row); err != nil {

@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 	"sync"
@@ -85,10 +87,15 @@ func CORS(allowed []string) gin.HandlerFunc {
 		origin := c.GetHeader("Origin")
 		if allowAll {
 			c.Header("Access-Control-Allow-Origin", "*")
-		} else if origin != "" {
-			if _, ok := set[origin]; ok {
-				c.Header("Access-Control-Allow-Origin", origin)
-				c.Header("Vary", "Origin")
+		} else {
+			// Vary must be set whether or not the origin matched, otherwise a
+			// shared cache can replay an allowed origin's Access-Control-Allow-Origin
+			// to a different, disallowed origin.
+			c.Writer.Header().Add("Vary", "Origin")
+			if origin != "" {
+				if _, ok := set[origin]; ok {
+					c.Header("Access-Control-Allow-Origin", origin)
+				}
 			}
 		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
@@ -125,13 +132,24 @@ func APIKeyAuth(s *store.Store) gin.HandlerFunc {
 }
 
 // AdminAuth checks the admin key via Bearer or X-Admin-Key.
+//
+// The comparison is constant time: a byte-wise `==` returns as soon as it hits
+// a differing byte, which lets an attacker recover the admin key one character
+// at a time from response latency. Both sides are hashed first so the compare
+// is also independent of the key length.
 func AdminAuth(adminKey string) gin.HandlerFunc {
+	configured := strings.TrimSpace(adminKey) != ""
+	want := sha256.Sum256([]byte(adminKey))
 	return func(c *gin.Context) {
 		got := c.GetHeader("X-Admin-Key")
 		if got == "" {
 			got = extractBearer(c)
 		}
-		if got == "" || got != adminKey {
+		have := sha256.Sum256([]byte(got))
+		ok := subtle.ConstantTimeCompare(have[:], want[:]) == 1
+		// An unset admin key must never authenticate anyone, not even a caller
+		// who sends an empty key.
+		if !configured || !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "unauthorized",
 			})
