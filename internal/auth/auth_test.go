@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -224,5 +225,93 @@ func writeTestAuthWithIssuer(t *testing.T, path, key, refresh string, exp time.T
 	}
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestConcurrentGetAccessTokenDedupesRefresh guards against a real race: many
+// requests arriving right at token expiry each observe the same stale
+// refresh_token and, without serialization, would each POST it to the
+// provider concurrently. Real OAuth providers commonly rotate (single-use)
+// refresh tokens, so a second use of the same token is rejected — meaning the
+// losing goroutine would fail even though a sibling goroutine successfully
+// refreshed the credential moments earlier. This simulates that rotation
+// behavior and asserts every concurrent caller still gets the fresh token,
+// and that only one refresh request actually reaches the provider.
+func TestConcurrentGetAccessTokenDedupesRefresh(t *testing.T) {
+	var mu sync.Mutex
+	seen := map[string]bool{}
+	hits := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"token_endpoint": "http://" + r.Host + "/oauth/token",
+			})
+		case r.URL.Path == "/oauth/token":
+			_ = r.ParseForm()
+			rt := r.Form.Get("refresh_token")
+			mu.Lock()
+			hits++
+			reused := seen[rt]
+			seen[rt] = true
+			mu.Unlock()
+			if reused {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "new-access",
+				"refresh_token": "new-refresh",
+				"expires_in":    3600,
+				"token_type":    "Bearer",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "auth.json")
+	writeTestAuthWithIssuer(t, path, "old-access", "old-refresh", time.Now().Add(2*time.Second), srv.URL, "cid")
+
+	m, err := NewManager(Options{
+		Path:        path,
+		Issuer:      srv.URL,
+		ClientID:    "cid",
+		RefreshSkew: 5 * time.Minute,
+		HTTPClient:  srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	toks := make([]string, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			toks[i], errs[i] = m.GetAccessToken(context.Background())
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: GetAccessToken failed: %v", i, err)
+		}
+		if toks[i] != "new-access" {
+			t.Fatalf("goroutine %d: got token %q, want new-access", i, toks[i])
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 1 {
+		t.Fatalf("expected exactly 1 refresh request to reach the provider, got %d", hits)
 	}
 }
