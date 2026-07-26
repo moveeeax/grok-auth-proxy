@@ -75,6 +75,14 @@ type Manager struct {
 	tokenEndpoint string
 	writing       bool // skip fsnotify events from our own writes
 
+	// refreshMu serializes the actual refresh HTTP round trip. Without it,
+	// concurrent callers racing GetAccessToken right at token expiry each read
+	// the same refresh_token and POST it to the provider concurrently; most
+	// OAuth providers rotate (single-use) refresh tokens, so only one of those
+	// requests succeeds and the rest fail with invalid_grant even though the
+	// manager holds a valid, freshly-refreshed token by the time they return.
+	refreshMu sync.Mutex
+
 	watcher *fsnotify.Watcher
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
@@ -363,7 +371,7 @@ func (m *Manager) GetAccessToken(ctx context.Context) (string, error) {
 
 // ForceRefresh refreshes regardless of expiry (e.g. after upstream 401).
 func (m *Manager) ForceRefresh(ctx context.Context) error {
-	return m.Refresh(ctx)
+	return m.doRefresh(ctx, true)
 }
 
 // StartProactiveRefresh periodically refreshes the access token before expiry
@@ -412,9 +420,15 @@ func (m *Manager) proactiveTick() {
 	m.log.Info("proactive token refresh ok", zap.Time("expires_at", m.ExpiresAt()))
 }
 
-// Refresh exchanges the refresh_token for a new access token.
+// Refresh exchanges the refresh_token for a new access token if it is at or
+// near expiry. Concurrent calls are deduplicated: a caller that loses the
+// race for refreshMu simply observes the token a sibling call just refreshed.
 func (m *Manager) Refresh(ctx context.Context) error {
-	err := m.refresh(ctx)
+	return m.doRefresh(ctx, false)
+}
+
+func (m *Manager) doRefresh(ctx context.Context, force bool) error {
+	err := m.refresh(ctx, force)
 	if m.metrics != nil {
 		m.metrics.IncAuthRefresh(err == nil)
 	}
@@ -424,14 +438,25 @@ func (m *Manager) Refresh(ctx context.Context) error {
 	return err
 }
 
-func (m *Manager) refresh(ctx context.Context) error {
-	m.mu.Lock()
-	// Serialize refreshes
+func (m *Manager) refresh(ctx context.Context, force bool) error {
+	// Only one refresh HTTP round trip may be in flight at a time (see
+	// refreshMu doc comment on the Manager struct).
+	m.refreshMu.Lock()
+	defer m.refreshMu.Unlock()
+
+	m.mu.RLock()
 	entry := m.entry
 	mapKey := m.mapKey
+	skew := m.refreshSkew
 	clientID := firstNonEmpty(entry.resolvedClientID(), m.clientID)
 	issuer := firstNonEmpty(entry.resolvedIssuer(), m.issuer)
-	m.mu.Unlock()
+	m.mu.RUnlock()
+
+	if !force && !entry.ExpiresAt.IsZero() && time.Now().Add(skew).Before(entry.ExpiresAt) {
+		// A concurrent caller already refreshed while we waited for refreshMu;
+		// the entry is fresh enough now, nothing more to do.
+		return nil
+	}
 
 	if strings.TrimSpace(entry.RefreshToken) == "" {
 		return errors.New("no refresh_token available")
