@@ -18,7 +18,7 @@ OpenAI-compatible HTTP proxy for Grok (xAI). Clients use **your** API keys; the 
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.26.10+ (the `go` directive in `go.mod`); CI tests on Go 1.26 and 1.27
 - A Grok CLI `auth.json` (usually `~/.grok/auth.json` after `grok login`)
 
 ### Local run
